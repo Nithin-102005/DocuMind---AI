@@ -2,14 +2,13 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
 from app.models import Document
 
 
 app = FastAPI(title="DocuMind AI API")
 
 
-Base.metadata.create_all(bind=engine)
 
 
 class DocumentCreate(BaseModel):
