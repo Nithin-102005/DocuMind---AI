@@ -6,13 +6,10 @@ from pypdf import PdfReader
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """
     Extract text from all pages of a PDF.
-
-    Args:
-        file_bytes: PDF file contents as bytes.
-
-    Returns:
-        Extracted text from the PDF.
     """
+
+    if not file_bytes:
+        raise ValueError("PDF file is empty")
 
     pdf_file = BytesIO(file_bytes)
 
@@ -20,10 +17,18 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 
     extracted_text = []
 
-    for page in reader.pages:
-        text = page.extract_text()
+    for page_number, page in enumerate(reader.pages, start=1):
 
-        if text:
-            extracted_text.append(text)
+        try:
+            text = page.extract_text()
+
+            if text:
+                extracted_text.append(text)
+
+        except Exception as error:
+            print(
+                f"Could not extract text from page "
+                f"{page_number}: {error}"
+            )
 
     return "\n\n".join(extracted_text)
