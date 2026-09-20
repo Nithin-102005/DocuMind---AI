@@ -23,6 +23,8 @@ from app.security import (
     verify_password,
 )
 
+from app.services.pdf_service import extract_text_from_pdf
+
 
 app = FastAPI(
     title="DocuMind AI API"
