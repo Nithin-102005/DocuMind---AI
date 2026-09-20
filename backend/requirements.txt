@@ -7,3 +7,5 @@ python-jose[cryptography]
 pwdlib[argon2]
 python-multipart
 email-validator
+pypdf
+python-multipart
