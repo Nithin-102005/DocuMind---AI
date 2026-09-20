@@ -1,4 +1,10 @@
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    UploadFile,
+    File,
+)
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -287,4 +293,83 @@ def delete_document(
 
     return {
         "message": "Document deleted successfully"
+    }
+
+
+@app.post("/documents/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # -------------------------
+    # Validate file type
+    # -------------------------
+
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported"
+        )
+
+    # -------------------------
+    # Read uploaded file
+    # -------------------------
+
+    file_bytes = await file.read()
+
+    # -------------------------
+    # Validate file is not empty
+    # -------------------------
+
+    if not file_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded PDF is empty"
+        )
+
+    # -------------------------
+    # Extract PDF text
+    # -------------------------
+
+    try:
+        extracted_text = extract_text_from_pdf(
+            file_bytes
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read the PDF file"
+        )
+
+    # -------------------------
+    # Validate extracted text
+    # -------------------------
+
+    if not extracted_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="No readable text found in PDF"
+        )
+
+    # -------------------------
+    # Create database document
+    # -------------------------
+
+    new_document = Document(
+        filename=file.filename or "uploaded.pdf",
+        content=extracted_text,
+        owner_id=current_user.id
+    )
+
+    db.add(new_document)
+    db.commit()
+    db.refresh(new_document)
+
+    return {
+        "message": "PDF uploaded successfully",
+        "document_id": new_document.id,
+        "filename": new_document.filename,
+        "text_length": len(extracted_text)
     }
