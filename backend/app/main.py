@@ -25,6 +25,9 @@ from app.security import (
 
 from app.services.pdf_service import extract_text_from_pdf
 
+from app.services.text_service import clean_text, chunk_text
+from app.services.vector_service import add_chunks
+
 
 app = FastAPI(
     title="DocuMind AI API"
@@ -304,9 +307,9 @@ async def upload_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # -------------------------
-    # Validate file type
-    # -------------------------
+    # --------------------------------
+    # 1. Validate file type
+    # --------------------------------
 
     if file.content_type != "application/pdf":
         raise HTTPException(
@@ -314,15 +317,11 @@ async def upload_document(
             detail="Only PDF files are supported"
         )
 
-    # -------------------------
-    # Read uploaded file
-    # -------------------------
+    # --------------------------------
+    # 2. Read uploaded PDF
+    # --------------------------------
 
     file_bytes = await file.read()
-
-    # -------------------------
-    # Validate file is not empty
-    # -------------------------
 
     if not file_bytes:
         raise HTTPException(
@@ -330,9 +329,9 @@ async def upload_document(
             detail="Uploaded PDF is empty"
         )
 
-    # -------------------------
-    # Extract PDF text
-    # -------------------------
+    # --------------------------------
+    # 3. Extract text from PDF
+    # --------------------------------
 
     try:
         extracted_text = extract_text_from_pdf(
@@ -347,9 +346,9 @@ async def upload_document(
             detail=f"Could not read PDF: {str(error)}"
         )
 
-    # -------------------------
-    # Validate extracted text
-    # -------------------------
+    # --------------------------------
+    # 4. Validate extracted text
+    # --------------------------------
 
     if not extracted_text.strip():
         raise HTTPException(
@@ -357,13 +356,37 @@ async def upload_document(
             detail="No readable text found in PDF"
         )
 
-    # -------------------------
-    # Create database document
-    # -------------------------
+    # --------------------------------
+    # 5. Clean extracted text
+    # --------------------------------
+
+    cleaned_text = clean_text(
+        extracted_text
+    )
+
+    # --------------------------------
+    # 6. Split text into chunks
+    # --------------------------------
+
+    chunks = chunk_text(
+        cleaned_text,
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+
+    if not chunks:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not create text chunks"
+        )
+
+    # --------------------------------
+    # 7. Save document to PostgreSQL
+    # --------------------------------
 
     new_document = Document(
         filename=file.filename or "uploaded.pdf",
-        content=extracted_text,
+        content=cleaned_text,
         owner_id=current_user.id
     )
 
@@ -371,9 +394,39 @@ async def upload_document(
     db.commit()
     db.refresh(new_document)
 
+    # --------------------------------
+    # 8. Store chunks in ChromaDB
+    # --------------------------------
+
+    try:
+        add_chunks(
+            document_id=new_document.id,
+            chunks=chunks
+        )
+
+    except Exception as error:
+        print(
+            f"ChromaDB error: {error}"
+        )
+
+        # Remove PostgreSQL record if
+        # vector storage fails
+        db.delete(new_document)
+        db.commit()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not store document vectors"
+        )
+
+    # --------------------------------
+    # 9. Return result
+    # --------------------------------
+
     return {
-        "message": "PDF uploaded successfully",
+        "message": "PDF uploaded and processed successfully",
         "document_id": new_document.id,
         "filename": new_document.filename,
-        "text_length": len(extracted_text)
+        "text_length": len(cleaned_text),
+        "chunk_count": len(chunks)
     }

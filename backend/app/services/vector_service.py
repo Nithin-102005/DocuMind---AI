@@ -15,6 +15,7 @@ collection = client.get_or_create_collection(
 
 def add_chunks(
     document_id: int,
+    user_id: int,
     chunks: list[str]
 ):
     """
@@ -32,6 +33,7 @@ def add_chunks(
     metadatas = [
         {
             "document_id": document_id,
+            "user_id": user_id,
             "chunk_index": index
         }
         for index in range(len(chunks))
@@ -46,15 +48,19 @@ def add_chunks(
 
 def search_chunks(
     query: str,
+    user_id: int,
     n_results: int = 3
 ):
     """
-    Search ChromaDB for relevant document chunks.
+    Search only the current user's document chunks.
     """
 
     results = collection.query(
         query_texts=[query],
-        n_results=n_results
+        n_results=n_results,
+        where={
+            "user_id": user_id
+        }
     )
 
     return results
