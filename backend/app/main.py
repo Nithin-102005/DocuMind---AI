@@ -337,10 +337,12 @@ async def upload_document(
             file_bytes
         )
 
-    except Exception:
+    except Exception as error:
+        print(f"PDF extraction error: {error}")
+
         raise HTTPException(
             status_code=400,
-            detail="Could not read the PDF file"
+            detail=f"Could not read PDF: {str(error)}"
         )
 
     # -------------------------
