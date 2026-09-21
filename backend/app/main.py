@@ -27,6 +27,16 @@ from app.services.pdf_service import extract_text_from_pdf
 
 from app.services.text_service import clean_text, chunk_text
 from app.services.vector_service import add_chunks
+from app.services.vector_service import search_chunks
+from app.schemas import (
+    DocumentCreate,
+    DocumentUpdate,
+    Token,
+    UserCreate,
+    UserResponse,
+    ChatRequest,
+)
+from app.services.rag_service import retrieve_relevant_chunks
 
 
 app = FastAPI(
@@ -399,10 +409,11 @@ async def upload_document(
     # --------------------------------
 
     try:
-        add_chunks(
-            document_id=new_document.id,
-            chunks=chunks
-        )
+       add_chunks(
+    document_id=new_document.id,
+    user_id=current_user.id,
+    chunks=chunks
+)
 
     except Exception as error:
         print(
@@ -429,4 +440,73 @@ async def upload_document(
         "filename": new_document.filename,
         "text_length": len(cleaned_text),
         "chunk_count": len(chunks)
+    }
+
+def retrieve_relevant_chunks(
+    question: str,
+    user_id: int,
+    n_results: int = 5
+):
+    """
+    Retrieve relevant document chunks for a user's question.
+    """
+
+    results = search_chunks(
+        query=question,
+        user_id=user_id,
+        n_results=n_results
+    )
+
+    documents = results.get("documents", [[]])[0]
+    metadatas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
+
+    retrieved_chunks = []
+
+    for document, metadata, distance in zip(
+        documents,
+        metadatas,
+        distances
+    ):
+        retrieved_chunks.append(
+            {
+                "content": document,
+                "document_id": metadata["document_id"],
+                "chunk_index": metadata["chunk_index"],
+                "distance": distance
+            }
+        )
+
+    return retrieved_chunks
+
+@app.post("/chat")
+def chat(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
+    question = request.question.strip()
+
+    if not question:
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty"
+        )
+
+    chunks = retrieve_relevant_chunks(
+        question=question,
+        user_id=current_user.id,
+        n_results=5
+    )
+
+    if not chunks:
+        return {
+            "question": question,
+            "message": "No relevant information found in your documents.",
+            "sources": []
+        }
+
+    return {
+        "question": question,
+        "message": "Relevant document chunks retrieved successfully.",
+        "sources": chunks
     }

@@ -43,3 +43,5 @@ class DocumentCreate(BaseModel):
 class DocumentUpdate(BaseModel):
     filename: str
     content: str
+class ChatRequest(BaseModel):
+    question: str
